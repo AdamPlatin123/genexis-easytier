@@ -19,7 +19,14 @@ const EVENTS = Object.freeze({
     EVENT_LAGGED: 'event_lagged',
 });
 
+// Most recent snapshot received from the Rust side via `save_configs`.
+// Rust already emits this on every config change, so the persisted state in
+// localStorage is normally up to date. We cache it so the close dialog's
+// "保存当前网络配置" checkbox can force an explicit final flush.
+let latestConfigsSnapshot: StoredGuiConfig[] = [];
+
 function onSaveConfigs(event: Event<StoredGuiConfig[]>) {
+    latestConfigsSnapshot = event.payload ?? [];
     console.log(`Received event '${EVENTS.SAVE_CONFIGS}': ${event.payload}`);
     localStorage.setItem(
         'networkList',
@@ -28,6 +35,35 @@ function onSaveConfigs(event: Event<StoredGuiConfig[]>) {
             source: normalizeConfigSource(source),
         }))),
     );
+}
+
+/**
+ * Returns the most recent network config snapshot pushed from the Rust side.
+ */
+export function getLatestConfigsSnapshot(): StoredGuiConfig[] {
+    return latestConfigsSnapshot;
+}
+
+/**
+ * Explicitly re-write the latest network config snapshot to localStorage.
+ * Used by the close dialog's "保存当前网络配置" checkbox so the user has a
+ * guaranteed, observable persist right before a full quit. Idempotent.
+ */
+export function flushConfigsToLocalStorage(): void {
+    try {
+        if (latestConfigsSnapshot.length === 0) {
+            return;
+        }
+        localStorage.setItem(
+            'networkList',
+            JSON.stringify(latestConfigsSnapshot.map(({ config, source }) => ({
+                config: NetworkTypes.normalizeNetworkConfig(config),
+                source: normalizeConfigSource(source),
+            }))),
+        );
+    } catch (e) {
+        console.warn('flushConfigsToLocalStorage failed:', e);
+    }
 }
 
 function normalizeInstanceIdPayload(payload: unknown): string {

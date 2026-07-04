@@ -524,6 +524,27 @@ async fn is_web_client_connected() -> Result<bool, String> {
     }
 }
 
+// Clean shutdown requested by the close dialog ("彻底关闭") or the tray
+// "彻底退出" item. easytier-core runs in-process (no child process), so
+// releasing the TUN interface means stopping every enabled network instance
+// before exiting. Once instances are stopped the process can exit; any
+// remaining Drop handlers in the instance manager are belt-and-suspenders.
+#[tauri::command]
+async fn quit_app(app: AppHandle) -> Result<(), String> {
+    if let Ok(client_manager) = get_client_manager!() {
+        let inst_ids: Vec<uuid::Uuid> =
+            client_manager.get_enabled_instances_with_tun_ids().collect();
+        for inst_id in inst_ids {
+            let _ = client_manager
+                .handle_update_network_state(app.clone(), inst_id, true)
+                .await;
+        }
+        let _ = client_manager.post_stop_network_instances_hook(&app).await;
+    }
+    app.exit(0);
+    Ok(())
+}
+
 // 获取日志目录的辅助函数
 fn get_log_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, tauri::Error> {
     if cfg!(target_os = "android") {
@@ -1407,13 +1428,17 @@ pub fn run_gui() -> std::process::ExitCode {
             is_client_running,
             init_web_client,
             is_web_client_connected,
+            quit_app,
             get_log_dir_path,
         ])
         .on_window_event(|_win, event| match event {
             #[cfg(not(target_os = "android"))]
             tauri::WindowEvent::CloseRequested { api, .. } => {
-                let _ = _win.hide();
-                let _ = set_dock_visibility(_win.app_handle().clone(), false);
+                // The frontend (App.vue) intercepts the close request and shows
+                // a tray-vs-quit dialog. Always prevent the default window
+                // destruction here so the dialog can decide: hide to tray or
+                // invoke the `quit_app` command for a clean shutdown.
+                let _ = _win;
                 api.prevent_close();
             }
             _ => {}

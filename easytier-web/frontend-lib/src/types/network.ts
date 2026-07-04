@@ -80,7 +80,7 @@ export function DEFAULT_NETWORK_CONFIG(): NetworkConfig {
     dhcp: true,
     virtual_ipv4: '',
     network_length: 24,
-    network_name: 'ET_TENCENT_RELAY',
+    network_name: 'genexis',
     network_secret: '',
     credential_file: '',
 

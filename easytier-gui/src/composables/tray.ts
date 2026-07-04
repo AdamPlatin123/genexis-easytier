@@ -1,17 +1,35 @@
 import { Menu, MenuItem, PredefinedMenuItem } from '@tauri-apps/api/menu'
 import { TrayIcon } from '@tauri-apps/api/tray'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { invoke } from '@tauri-apps/api/core'
 import pkg from '~/../package.json'
 
 const DEFAULT_TRAY_NAME = 'main'
 
+// Restore (only) the main window from the tray. The Rust-side
+// `on_tray_icon_event` left-click handler still toggles visibility; this
+// helper is used by the menu's "显示窗口" item and is intentionally
+// restore-only (it never hides).
+async function showMainWindow() {
+  const win = getCurrentWindow()
+  await win.show()
+  await win.unminimize().catch(() => {})
+  await win.setFocus()
+  await invoke('set_dock_visibility', { visible: true }).catch(() => {})
+}
+
+// Kept for the JS-side tray icon `action` callback path. The Rust
+// `on_tray_icon_event` handler is what actually fires on most platforms; this
+// stays here so any platform that routes tray clicks through the JS action
+// keeps working.
 async function toggleVisibility() {
-  if (await getCurrentWindow().isVisible()) {
-    await getCurrentWindow().hide()
+  const win = getCurrentWindow()
+  if (await win.isVisible()) {
+    await win.hide()
+    await invoke('set_dock_visibility', { visible: false }).catch(() => {})
   }
   else {
-    await getCurrentWindow().show()
-    await getCurrentWindow().setFocus()
+    await showMainWindow()
   }
 }
 
@@ -53,25 +71,34 @@ export async function useTray(init: boolean = false) {
 
 export async function generateMenuItem() {
   return [
-    await MenuItemShow('Show / Hide'),
+    await MenuItemShow('显示窗口'),
     await PredefinedMenuItem.new({ item: 'Separator' }),
-    await MenuItemExit('Exit'),
+    await MenuItemExit('彻底退出'),
   ]
 }
 
+// "彻底退出": stop easytier-core (releases TUN) then exit. Replaces the old
+// PredefinedMenuItem "Quit", which hard-quit without cleaning up network
+// instances / TUN. Same code path as the close dialog's "彻底关闭".
 export async function MenuItemExit(text: string) {
-  return await PredefinedMenuItem.new({
+  return await MenuItem.new({
+    id: 'full-exit',
     text,
-    item: 'Quit',
+    action: async () => {
+      await invoke('quit_app').catch((e: unknown) => {
+        console.error('quit_app failed from tray:', e)
+      })
+    },
   })
 }
 
+// "显示窗口": restore the window from the tray (show + focus + dock).
 export async function MenuItemShow(text: string) {
   return await MenuItem.new({
     id: 'show',
     text,
     action: async () => {
-      await toggleVisibility()
+      await showMainWindow()
     },
   })
 }
