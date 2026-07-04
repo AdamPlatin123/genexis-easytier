@@ -63,6 +63,13 @@ jobs:
             echo "No Genexis source icon found, using existing icons."
           fi
 
+      - name: Copy Windows third-party DLLs (wintun.dll, Packet.dll)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cp easytier/third_party/x86_64/wintun.dll easytier-gui/src-tauri/
+          cp easytier/third_party/x86_64/Packet.dll easytier-gui/src-tauri/
+
       - name: Build Tauri app
         working-directory: easytier-gui
         env:
