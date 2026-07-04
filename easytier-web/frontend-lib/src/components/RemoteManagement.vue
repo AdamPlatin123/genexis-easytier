@@ -34,6 +34,10 @@ const currentNetworkConfig = ref<NetworkTypes.NetworkConfig | undefined>(undefin
 
 const listInstanceIdResponse = ref<Api.ListNetworkInstanceIdResponse | undefined>(undefined);
 
+// 防无限循环标志：确保只在首次且无实例时自动建一次
+// 已有实例或已建过则不再自动触发 (任务约束：network_secret 必须保持空字符串)
+const hasAutoCreated = ref(false);
+
 const isRunning = (instanceId: string) => {
     return (listInstanceIdResponse.value?.running_inst_ids ?? []).map(Utils.UuidToStr).includes(instanceId);
 }
@@ -107,6 +111,35 @@ watch(instanceList, async (newVal) => {
         });
     }
 });
+
+// 自动新建预填实例：仅当首次拉取到实例列表且列表为空(running 和 disabled 都为空)时触发一次。
+// hasAutoCreated 标志保证只触发一次,避免轮询/异常导致的无限循环。
+// 注意:此处仅创建预填实例(network_name='genexis' + peer, network_secret 必须保持空字符串),
+// 用户随后需在 Config 页填入 network_secret 并点"运行网络"才会真正联网。
+const autoCreateInstanceIfEmpty = async () => {
+    if (hasAutoCreated.value) {
+        return;
+    }
+    const resp = listInstanceIdResponse.value;
+    if (!resp) {
+        // 实例列表尚未拉取过,等下一次轮询再判断
+        return;
+    }
+    // 首次观测到任意响应即置位,保证"只在首次"触发,无论结果如何都不再重复
+    hasAutoCreated.value = true;
+    const runningIds = resp.running_inst_ids ?? [];
+    const disabledIds = resp.disabled_inst_ids ?? [];
+    if (runningIds.length === 0 && disabledIds.length === 0) {
+        // 仅在首次且无实例时新建预填实例(genexis + peer, network_secret 保持空)
+        try {
+            await newNetwork();
+        } catch (e) {
+            // 失败也不再重试,避免轮询反复触发造成循环
+            console.error('Auto-create prefilled network instance failed', e);
+        }
+    }
+};
+watch(listInstanceIdResponse, autoCreateInstanceIfEmpty, { deep: false });
 
 const selectedInstanceId = computed({
     get() {
