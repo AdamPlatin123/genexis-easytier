@@ -42,9 +42,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev
 
-      - name: Install frontend dependencies
-        working-directory: easytier-gui
-        run: pnpm install
+      - name: Install frontend dependencies (根 workspace, 含 tauri-plugin-vpnservice)
+        run: pnpm install --frozen-lockfile
 
       - name: Generate Genexis icons (optional)
         working-directory: easytier-gui
