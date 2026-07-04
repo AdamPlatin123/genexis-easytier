@@ -45,6 +45,10 @@ jobs:
       - name: Install frontend dependencies (根 workspace, 含 tauri-plugin-vpnservice)
         run: pnpm install --frozen-lockfile
 
+      - name: Build tauri-plugin-vpnservice-api (生成 dist-js, 修 vue-tsc TS2307)
+        working-directory: tauri-plugin-vpnservice
+        run: pnpm build
+
       - name: Generate Genexis icons (optional)
         working-directory: easytier-gui
         shell: bash
